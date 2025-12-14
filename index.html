@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magical Birthday Wish</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1; }
+        
+        /* UI OVERLAYS */
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 10; pointer-events: none;
+            display: flex; justify-content: center; align-items: center;
+        }
+
+        /* CARD CREATOR BOX */
+        #creator-box, #expired-msg {
+            background: rgba(20, 20, 30, 0.9);
+            border: 1px solid #333;
+            box-shadow: 0 0 20px cyan;
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+            color: white;
+            pointer-events: auto;
+            max-width: 400px;
+            display: none; /* Hidden by default */
+        }
+
+        h1 { margin-top: 0; color: cyan; text-transform: uppercase; letter-spacing: 2px; }
+        p { color: #ccc; }
+
+        input {
+            width: 80%; padding: 10px; margin: 15px 0;
+            background: #111; border: 1px solid #555; color: white;
+            border-radius: 5px; text-align: center; font-size: 1.2rem;
+        }
+        input:focus { outline: none; border-color: cyan; }
+
+        button {
+            background: linear-gradient(45deg, #ff0055, #ff00ff);
+            border: none; padding: 12px 30px; color: white;
+            font-size: 1rem; border-radius: 25px; cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            font-weight: bold;
+        }
+        button:hover { transform: scale(1.05); box-shadow: 0 0 15px #ff00ff; }
+
+        .link-display {
+            margin-top: 15px; word-break: break-all;
+            font-size: 0.9rem; color: #00ffaa;
+            background: #000; padding: 10px; border-radius: 5px;
+            display: none; user-select: text;
+        }
+
+        /* LOADING SPINNER */
+        #loading {
+            position: absolute; top: 50%; left: 50%; 
+            transform: translate(-50%, -50%); 
+            color: white; font-family: sans-serif; pointer-events: none;
+            text-shadow: 0 0 10px cyan;
+            display: none; z-index: 5;
+        }
+
+        .input_video { display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div id="creator-box">
+            <h1>Create A Wish</h1>
+            <p>Enter the birthday person's name below.</p>
+            <input type="text" id="nameInput" placeholder="Name (e.g. Sarah)" maxlength="15">
+            <br>
+            <button onclick="generateLink()">Generate Magic Link</button>
+            <div id="resultLink" class="link-display"></div>
+            <p style="font-size: 0.8rem; margin-top:10px; opacity: 0.7;">Link expires in 5 minutes after creation.</p>
+        </div>
+
+        <div id="expired-msg">
+            <h1 style="color: #555;">Wish Faded</h1>
+            <p>This magical moment has expired in the winds of time.</p>
+            <button onclick="window.location.href = window.location.pathname">Create New Wish</button>
+        </div>
+    </div>
+
+    <div id="loading">Igniting Fireworks Engine...<br>Please Allow Camera Access</div>
+    <video class="input_video"></video>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+<script>
+    // --- 0. LOGIC: HANDLE URL PARAMETERS ---
+    const urlParams = new URLSearchParams(window.location.search);
+    const wishName = urlParams.get('n'); // Name
+    const wishTime = urlParams.get('t'); // Timestamp
+    const EXPIRATION_MINUTES = 5; 
+
+    const creatorBox = document.getElementById('creator-box');
+    const expiredMsg = document.getElementById('expired-msg');
+    const loadingMsg = document.getElementById('loading');
+
+    let isWishMode = false;
+    let finalName = "YOU"; // Default if something breaks
+
+    function initPage() {
+        if (!wishName || !wishTime) {
+            // SCENARIO 1: No params, show creator box
+            creatorBox.style.display = 'block';
+        } else {
+            // SCENARIO 2: Validate Time
+            const now = Date.now();
+            const createdTime = parseInt(wishTime);
+            const diffMinutes = (now - createdTime) / 1000 / 60;
+
+            if (diffMinutes > EXPIRATION_MINUTES) {
+                expiredMsg.style.display = 'block';
+            } else {
+                // SCENARIO 3: VALID WISH
+                finalName = atob(wishName); // Decode name
+                isWishMode = true;
+                loadingMsg.style.display = 'block';
+                startVisuals(); // Only start 3D if valid
+            }
+        }
+    }
+
+    function generateLink() {
+        const input = document.getElementById('nameInput').value.trim();
+        if(!input) return alert("Please enter a name!");
+        
+        // Base64 encode name to make URL look cleaner
+        const encodedName = btoa(input); 
+        const now = Date.now();
+        
+        // Construct Link
+        const link = `${window.location.origin}${window.location.pathname}?n=${encodedName}&t=${now}`;
+        
+        const resDiv = document.getElementById('resultLink');
+        resDiv.style.display = 'block';
+        resDiv.innerHTML = `Send this link (Copies automatically):<br><br><a href="${link}" style="color:cyan;">${link}</a>`;
+        
+        navigator.clipboard.writeText(link).then(() => {
+            alert("Link copied to clipboard! Share it immediately.");
+        });
+    }
+
+    // --- 1. THREE.JS SETUP (Wrapped in function to start only when needed) ---
+    let camera, scene, renderer, particles, textMesh;
+    let isHandDetected = false;
+    let targetX = 0, targetY = 0;
+
+    function startVisuals() {
+        scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050505, 0.003);
+
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 60;
+
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // CREATE TEXT
+        createTextObject();
+
+        // CREATE PARTICLES
+        createParticles();
+
+        // START ANIMATION
+        animate();
+
+        // START CAMERA
+        startCamera();
+    }
+
+    // --- 2. DYNAMIC TEXT TEXTURE ---
+    function createTextObject() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024;
+        canvas.height = 1024; // Taller for 3 lines
+        const ctx = canvas.getContext('2d');
+
+        // Transparent bg
+        ctx.fillStyle = 'rgba(0,0,0,0)'; 
+        ctx.fillRect(0, 0, 1024, 1024);
+
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        // Line 1: HAPPY
+        ctx.shadowColor = "#FF00FF";
+        ctx.shadowBlur = 25;
+        ctx.fillStyle = "white";
+        ctx.font = "bold 90px Arial";
+        ctx.fillText("HAPPY", 512, 300);
+
+        // Line 2: BIRTHDAY
+        ctx.shadowColor = "#00FFFF";
+        ctx.fillText("BIRTHDAY", 512, 420);
+
+        // Line 3: NAME (The User Input)
+        ctx.shadowColor = "#FFD700"; // Gold Glow
+        ctx.fillStyle = "#FFFACD"; // Lemon Chiffon fill
+        ctx.font = "bold 130px 'Segoe UI'"; // Bigger font for name
+        ctx.fillText(finalName.toUpperCase(), 512, 600);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        
+        const textGeo = new THREE.PlaneGeometry(80, 80); // Taller geometry
+        const textMat = new THREE.MeshBasicMaterial({ 
+            map: texture, 
+            transparent: true, 
+            opacity: 0.95,
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending 
+        });
+        textMesh = new THREE.Mesh(textGeo, textMat);
+        textMesh.position.z = -15; 
+        scene.add(textMesh);
+    }
+
+    // --- 3. FIREWORK PARTICLE SYSTEM ---
+    function createParticles() {
+        const particleCount = 15000; // Increased count
+        const geometry = new THREE.BufferGeometry();
+        const positions = [];
+        const velocities = [];
+        const colors = [];
+
+        const colorPalette = [
+            new THREE.Color(0xFF0055), // Red
+            new THREE.Color(0xFFD700), // Gold
+            new THREE.Color(0x00FFFF), // Cyan
+            new THREE.Color(0xFFFFFF), // White
+            new THREE.Color(0xAA00FF)  // Purple
+        ];
+
+        for (let i = 0; i < particleCount; i++) {
+            const x = (Math.random() - 0.5) * 200;
+            const y = (Math.random() - 0.5) * 200;
+            const z = (Math.random() - 0.5) * 100;
+            positions.push(x, y, z);
+            velocities.push(0, 0, 0);
+
+            const color = colorPalette[Math.floor(Math.random() * colorPalette.length)];
+            colors.push(color.r, color.g, color.b);
+        }
+
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+        const material = new THREE.PointsMaterial({
+            size: 0.7,
+            vertexColors: true,
+            blending: THREE.AdditiveBlending,
+            transparent: true,
+            opacity: 0.8,
+            depthWrite: false
+        });
+
+        particles = new THREE.Points(geometry, material);
+        scene.add(particles);
+    }
+
+    // --- 4. ANIMATION LOOP ---
+    function animate() {
+        requestAnimationFrame(animate);
+
+        const posAttr = particles.geometry.attributes.position;
+        const posArray = posAttr.array;
+        
+        // Physics logic
+        const speed = 0.1; 
+        const friction = 0.92; 
+        const returnStrength = 0.008; 
+
+        for (let i = 0; i < 15000; i++) {
+            const ix = i * 3;
+            const iy = i * 3 + 1;
+            const iz = i * 3 + 2;
+
+            let vx = velocities[ix];
+            let vy = velocities[iy];
+            let vz = velocities[iz]; // Fix: accessing velocity array, not posArray
+
+            let px = posArray[ix];
+            let py = posArray[iy];
+            let pz = posArray[iz];
+
+            if (isHandDetected) {
+                // MESMERIZING MODE: Particles flow to hand
+                const dx = targetX - px;
+                const dy = targetY - py;
+                const dz = 20 - pz; 
+
+                const distSq = dx*dx + dy*dy + dz*dz;
+                const force = Math.min(200 / (distSq + 1), 2); 
+
+                vx += dx * force * speed;
+                vy += dy * force * speed;
+                vz += dz * force * speed;
+            } else {
+                // IDLE MODE: Orbit Name
+                // Create a spiral effect
+                const angle = Date.now() * 0.0001 + (i * 0.0001);
+                const radius = 30 + Math.sin(Date.now() * 0.001 + i) * 5;
+                
+                const targetIdleX = Math.cos(angle) * radius;
+                const targetIdleY = Math.sin(angle) * (radius * 0.5); // Ellipse
+
+                vx += (targetIdleX - px) * returnStrength;
+                vy += (targetIdleY - py) * returnStrength;
+                vz += (-10 - pz) * returnStrength;
+
+                // Random sparkle
+                vx += (Math.random()-0.5) * 0.05;
+                vy += (Math.random()-0.5) * 0.05;
+                vz += (Math.random()-0.5) * 0.05;
+            }
+
+            vx *= friction;
+            vy *= friction;
+            vz *= friction;
+
+            posArray[ix] += vx;
+            posArray[iy] += vy;
+            posArray[iz] += vz;
+
+            velocities[ix] = vx;
+            velocities[iy] = vy;
+            velocities[iz] = vz;
+        }
+
+        posAttr.needsUpdate = true;
+        
+        // Float text
+        if(textMesh) {
+            textMesh.rotation.y = Math.sin(Date.now() * 0.001) * 0.1;
+            textMesh.position.y = Math.sin(Date.now() * 0.002) * 2;
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    // --- 5. MEDIAPIPE LOGIC ---
+    function startCamera() {
+        const videoElement = document.getElementsByClassName('input_video')[0];
+
+        function onResults(results) {
+            loadingMsg.style.display = 'none'; // Hide loading when hand ready or loop starts
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                isHandDetected = true;
+                const hand = results.multiHandLandmarks[0];
+                const indexFinger = hand[8]; // Index finger tip
+
+                // Map coordinates & Invert X for mirror effect
+                targetX = (0.5 - indexFinger.x) * 120; 
+                targetY = (0.5 - indexFinger.y) * 80; 
+                
+            } else {
+                isHandDetected = false;
+            }
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        const cameraUtils = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+
+        cameraUtils.start();
+    }
+
+    window.addEventListener('resize', () => {
+        if(camera && renderer) {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    });
+
+    // Initialize logic
+    initPage();
+
+</script>
+
+</body>
+</html>

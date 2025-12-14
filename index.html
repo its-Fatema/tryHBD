@@ -96,67 +96,73 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 
 <script>
-    // --- 0. LOGIC: HANDLE URL PARAMETERS ---
+    // --- CONFIG ---
     const urlParams = new URLSearchParams(window.location.search);
-    const wishName = urlParams.get('n'); // Name
-    const wishTime = urlParams.get('t'); // Timestamp
-    const EXPIRATION_MINUTES = 5; 
+    const wishName = urlParams.get('n'); 
+    const wishTime = urlParams.get('t');
+    const EXPIRATION_MINUTES = 10; 
 
-    const creatorBox = document.getElementById('creator-box');
-    const expiredMsg = document.getElementById('expired-msg');
-    const loadingMsg = document.getElementById('loading');
+    let finalName = ""; 
+    let isReceiverMode = false;
 
-    let isWishMode = false;
-    let finalName = "YOU"; // Default if something breaks
-
-    function initPage() {
-        if (!wishName || !wishTime) {
-            // SCENARIO 1: No params, show creator box
-            creatorBox.style.display = 'block';
-        } else {
-            // SCENARIO 2: Validate Time
+    // --- INITIALIZATION ---
+    function init() {
+        if (wishName && wishTime) {
+            // --- RECEIVER VIEW ---
             const now = Date.now();
             const createdTime = parseInt(wishTime);
             const diffMinutes = (now - createdTime) / 1000 / 60;
 
             if (diffMinutes > EXPIRATION_MINUTES) {
-                expiredMsg.style.display = 'block';
+                document.getElementById('status-msg').style.display = 'block';
+                document.getElementById('status-msg').innerText = "✨ The magic has faded... (Link Expired)";
+                document.getElementById('creator-controls').style.display = 'flex'; 
             } else {
-                // SCENARIO 3: VALID WISH
-                finalName = atob(wishName); // Decode name
-                isWishMode = true;
-                loadingMsg.style.display = 'block';
-                startVisuals(); // Only start 3D if valid
+                // VALID LINK
+                finalName = atob(wishName); 
+                isReceiverMode = true;
+                
+                document.getElementById('creator-controls').style.display = 'none';
+                
+                const status = document.getElementById('status-msg');
+                status.style.display = 'block';
+                status.innerText = "Igniting Magic Engine...";
+                
+                document.getElementById('hand-instruction').style.display = 'block';
+
+                // CHECK FOR CAMERA SUPPORT BEFORE STARTING
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    alert("⚠️ CAMERA BLOCKED: Browsers do not allow camera access on 'file://' URLs. Please use 'Live Server' in VS Code or host this on Netlify/GitHub Pages.");
+                    status.innerText = "Error: Camera requires HTTPS or Localhost.";
+                    status.style.color = "red";
+                } else {
+                    startCamera();
+                }
             }
-        }
+        } 
+        
+        initThreeJS();
     }
 
     function generateLink() {
         const input = document.getElementById('nameInput').value.trim();
-        if(!input) return alert("Please enter a name!");
+        if(!input) return alert("Enter a name first!");
         
-        // Base64 encode name to make URL look cleaner
         const encodedName = btoa(input); 
         const now = Date.now();
-        
-        // Construct Link
         const link = `${window.location.origin}${window.location.pathname}?n=${encodedName}&t=${now}`;
         
-        const resDiv = document.getElementById('resultLink');
-        resDiv.style.display = 'block';
-        resDiv.innerHTML = `Send this link (Copies automatically):<br><br><a href="${link}" style="color:cyan;">${link}</a>`;
-        
         navigator.clipboard.writeText(link).then(() => {
-            alert("Link copied to clipboard! Share it immediately.");
+            alert("Link copied! \n\nIMPORTANT: If you send this link to yourself to test, make sure you are not opening it as a file://. Use a local server.");
         });
     }
 
-    // --- 1. THREE.JS SETUP (Wrapped in function to start only when needed) ---
-    let camera, scene, renderer, particles, textMesh;
+    // --- THREE.JS VISUALS ---
+    let scene, camera, renderer, particles, textMesh;
     let isHandDetected = false;
     let targetX = 0, targetY = 0;
 
-    function startVisuals() {
+    function initThreeJS() {
         scene = new THREE.Scene();
         scene.fog = new THREE.FogExp2(0x050505, 0.003);
 
@@ -168,243 +174,187 @@
         renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        // CREATE TEXT
-        createTextObject();
-
-        // CREATE PARTICLES
+        createText();
         createParticles();
-
-        // START ANIMATION
         animate();
-
-        // START CAMERA
-        startCamera();
     }
 
-    // --- 2. DYNAMIC TEXT TEXTURE ---
-    function createTextObject() {
+    function createText() {
         const canvas = document.createElement('canvas');
         canvas.width = 1024;
-        canvas.height = 1024; // Taller for 3 lines
+        canvas.height = 1024; 
         const ctx = canvas.getContext('2d');
 
-        // Transparent bg
         ctx.fillStyle = 'rgba(0,0,0,0)'; 
         ctx.fillRect(0, 0, 1024, 1024);
-
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
-        // Line 1: HAPPY
         ctx.shadowColor = "#FF00FF";
-        ctx.shadowBlur = 25;
+        ctx.shadowBlur = 30;
         ctx.fillStyle = "white";
         ctx.font = "bold 90px Arial";
-        ctx.fillText("HAPPY", 512, 300);
+        ctx.fillText("HAPPY", 512, 350);
 
-        // Line 2: BIRTHDAY
         ctx.shadowColor = "#00FFFF";
-        ctx.fillText("BIRTHDAY", 512, 420);
+        ctx.fillText("BIRTHDAY", 512, 480);
 
-        // Line 3: NAME (The User Input)
-        ctx.shadowColor = "#FFD700"; // Gold Glow
-        ctx.fillStyle = "#FFFACD"; // Lemon Chiffon fill
-        ctx.font = "bold 130px 'Segoe UI'"; // Bigger font for name
-        ctx.fillText(finalName.toUpperCase(), 512, 600);
+        if(finalName) {
+            ctx.shadowColor = "#FFD700"; 
+            ctx.fillStyle = "#FFFACD"; 
+            ctx.font = "bold 140px sans-serif"; 
+            ctx.fillText(finalName.toUpperCase(), 512, 650);
+        }
 
         const texture = new THREE.CanvasTexture(canvas);
-        
-        const textGeo = new THREE.PlaneGeometry(80, 80); // Taller geometry
-        const textMat = new THREE.MeshBasicMaterial({ 
-            map: texture, 
-            transparent: true, 
-            opacity: 0.95,
-            side: THREE.DoubleSide,
-            blending: THREE.AdditiveBlending 
+        const material = new THREE.MeshBasicMaterial({ 
+            map: texture, transparent: true, opacity: 0.95, 
+            side: THREE.DoubleSide, blending: THREE.AdditiveBlending 
         });
-        textMesh = new THREE.Mesh(textGeo, textMat);
-        textMesh.position.z = -15; 
+        textMesh = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), material);
+        textMesh.position.z = -10;
         scene.add(textMesh);
     }
 
-    // --- 3. FIREWORK PARTICLE SYSTEM ---
     function createParticles() {
-        const particleCount = 15000; // Increased count
+        const count = 12000;
         const geometry = new THREE.BufferGeometry();
         const positions = [];
-        const velocities = [];
+        const velocities = []; // Custom velocity storage
         const colors = [];
+        const palette = [0xFF0055, 0xFFD700, 0x00FFFF, 0xFFFFFF]; 
 
-        const colorPalette = [
-            new THREE.Color(0xFF0055), // Red
-            new THREE.Color(0xFFD700), // Gold
-            new THREE.Color(0x00FFFF), // Cyan
-            new THREE.Color(0xFFFFFF), // White
-            new THREE.Color(0xAA00FF)  // Purple
-        ];
-
-        for (let i = 0; i < particleCount; i++) {
-            const x = (Math.random() - 0.5) * 200;
-            const y = (Math.random() - 0.5) * 200;
-            const z = (Math.random() - 0.5) * 100;
-            positions.push(x, y, z);
-            velocities.push(0, 0, 0);
-
-            const color = colorPalette[Math.floor(Math.random() * colorPalette.length)];
+        for (let i = 0; i < count; i++) {
+            positions.push((Math.random()-0.5)*200, (Math.random()-0.5)*200, (Math.random()-0.5)*100);
+            velocities.push(0,0,0);
+            const color = new THREE.Color(palette[Math.floor(Math.random()*palette.length)]);
             colors.push(color.r, color.g, color.b);
         }
 
         geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        
+        // Custom attribute for velocity to persist it
+        geometry.setAttribute('velocity', new THREE.Float32BufferAttribute(velocities, 3));
 
-        const material = new THREE.PointsMaterial({
-            size: 0.7,
-            vertexColors: true,
-            blending: THREE.AdditiveBlending,
-            transparent: true,
-            opacity: 0.8,
-            depthWrite: false
-        });
-
-        particles = new THREE.Points(geometry, material);
+        particles = new THREE.Points(geometry, new THREE.PointsMaterial({
+            size: 0.8, vertexColors: true, blending: THREE.AdditiveBlending, 
+            transparent: true, opacity: 0.8, depthWrite: false
+        }));
         scene.add(particles);
     }
 
-    // --- 4. ANIMATION LOOP ---
     function animate() {
         requestAnimationFrame(animate);
-
-        const posAttr = particles.geometry.attributes.position;
-        const posArray = posAttr.array;
         
-        // Physics logic
-        const speed = 0.1; 
-        const friction = 0.92; 
-        const returnStrength = 0.008; 
+        const posAttr = particles.geometry.attributes.position;
+        const velAttr = particles.geometry.attributes.velocity;
+        
+        const pos = posAttr.array;
+        const vel = velAttr.array; // Use the attribute array for storage
+        
+        const speed = isReceiverMode ? 0.1 : 0.05; 
+        const returnStrength = 0.008;
 
-        for (let i = 0; i < 15000; i++) {
+        for (let i = 0; i < 12000; i++) {
             const ix = i * 3;
             const iy = i * 3 + 1;
             const iz = i * 3 + 2;
 
-            let vx = velocities[ix];
-            let vy = velocities[iy];
-            let vz = velocities[iz]; // Fix: accessing velocity array, not posArray
+            let px = pos[ix];
+            let py = pos[iy];
+            let pz = pos[iz];
 
-            let px = posArray[ix];
-            let py = posArray[iy];
-            let pz = posArray[iz];
+            let vx = vel[ix]; // Retrieve previous velocity
+            let vy = vel[iy];
+            let vz = vel[iz];
 
-            if (isHandDetected) {
-                // MESMERIZING MODE: Particles flow to hand
+            if (isHandDetected && isReceiverMode) {
                 const dx = targetX - px;
                 const dy = targetY - py;
-                const dz = 20 - pz; 
-
+                const dz = 20 - pz;
                 const distSq = dx*dx + dy*dy + dz*dz;
-                const force = Math.min(200 / (distSq + 1), 2); 
-
-                vx += dx * force * speed;
-                vy += dy * force * speed;
-                vz += dz * force * speed;
-            } else {
-                // IDLE MODE: Orbit Name
-                // Create a spiral effect
-                const angle = Date.now() * 0.0001 + (i * 0.0001);
-                const radius = 30 + Math.sin(Date.now() * 0.001 + i) * 5;
+                const force = Math.min(200/(distSq+1), 2) * speed;
                 
-                const targetIdleX = Math.cos(angle) * radius;
-                const targetIdleY = Math.sin(angle) * (radius * 0.5); // Ellipse
-
-                vx += (targetIdleX - px) * returnStrength;
-                vy += (targetIdleY - py) * returnStrength;
+                vx += dx * force * 0.1; // Accumulate force
+                vy += dy * force * 0.1;
+                vz += dz * force * 0.1;
+            } else {
+                const angle = Date.now() * 0.0001 + (i * 0.0005);
+                const radius = 35 + Math.sin(Date.now()*0.0005 + i)*10;
+                
+                const tx = Math.cos(angle) * radius;
+                const ty = Math.sin(angle) * (radius * 0.6);
+                
+                vx += (tx - px) * returnStrength;
+                vy += (ty - py) * returnStrength;
                 vz += (-10 - pz) * returnStrength;
-
-                // Random sparkle
-                vx += (Math.random()-0.5) * 0.05;
-                vy += (Math.random()-0.5) * 0.05;
-                vz += (Math.random()-0.5) * 0.05;
             }
 
-            vx *= friction;
-            vy *= friction;
-            vz *= friction;
+            // Friction
+            vx *= 0.9; 
+            vy *= 0.9;
+            vz *= 0.9;
 
-            posArray[ix] += vx;
-            posArray[iy] += vy;
-            posArray[iz] += vz;
-
-            velocities[ix] = vx;
-            velocities[iy] = vy;
-            velocities[iz] = vz;
+            pos[ix] += vx;
+            pos[iy] += vy;
+            pos[iz] += vz;
+            
+            // Store velocity back
+            vel[ix] = vx;
+            vel[iy] = vy;
+            vel[iz] = vz;
         }
-
-        posAttr.needsUpdate = true;
         
-        // Float text
+        posAttr.needsUpdate = true;
+        velAttr.needsUpdate = true; // Important to save velocity
+        
         if(textMesh) {
-            textMesh.rotation.y = Math.sin(Date.now() * 0.001) * 0.1;
-            textMesh.position.y = Math.sin(Date.now() * 0.002) * 2;
+            textMesh.position.y = Math.sin(Date.now()*0.001)*2;
+            textMesh.rotation.z = Math.sin(Date.now()*0.0005)*0.05;
         }
 
         renderer.render(scene, camera);
     }
 
-    // --- 5. MEDIAPIPE LOGIC ---
+    // --- HAND TRACKING (Only runs for Receiver) ---
     function startCamera() {
         const videoElement = document.getElementsByClassName('input_video')[0];
-
-        function onResults(results) {
-            loadingMsg.style.display = 'none'; // Hide loading when hand ready or loop starts
-
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+        
+        hands.onResults((results) => {
+            document.getElementById('status-msg').style.display = 'none'; 
+            if (results.multiHandLandmarks.length > 0) {
                 isHandDetected = true;
-                const hand = results.multiHandLandmarks[0];
-                const indexFinger = hand[8]; // Index finger tip
-
-                // Map coordinates & Invert X for mirror effect
-                targetX = (0.5 - indexFinger.x) * 120; 
-                targetY = (0.5 - indexFinger.y) * 80; 
-                
+                const index = results.multiHandLandmarks[0][8];
+                targetX = (0.5 - index.x) * 120; 
+                targetY = (0.5 - index.y) * 80;
             } else {
                 isHandDetected = false;
             }
-        }
-
-        const hands = new Hands({locateFile: (file) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-        }});
-
-        hands.setOptions({
-            maxNumHands: 1,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
         });
-
-        hands.onResults(onResults);
 
         const cameraUtils = new Camera(videoElement, {
-            onFrame: async () => {
-                await hands.send({image: videoElement});
-            },
-            width: 640,
-            height: 480
+            onFrame: async () => { await hands.send({image: videoElement}); },
+            width: 640, height: 480
         });
-
-        cameraUtils.start();
+        
+        cameraUtils.start()
+            .then(() => { console.log("Camera started"); })
+            .catch(e => {
+                alert("Camera failed to start. Ensure you are on HTTPS or Localhost.");
+            });
     }
 
     window.addEventListener('resize', () => {
-        if(camera && renderer) {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // Initialize logic
-    initPage();
+    init(); 
 
 </script>
 

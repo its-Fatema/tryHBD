@@ -3,81 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Magical Birthday</title>
-    <link href="https://fonts.googleapis.com/css2?family=Pacifico&family=Poppins:wght@300;600&display=swap" rel="stylesheet">
+    <title>Birthday Wish (Light Theme)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Pacifico&family=Poppins:wght@400;700&display=swap" rel="stylesheet">
     <style>
         body { 
             margin: 0; 
             overflow: hidden; 
-            background: radial-gradient(circle at center, #1a1a2e 0%, #000000 100%); 
+            /* CHANGE 1: WHITE BG */
+            background-color: #f8f9fa; 
             font-family: 'Poppins', sans-serif; 
+            color: #333;
         }
         canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1; }
 
-        /* --- GLASSMORMISM UI --- */
+        /* --- LIGHT THEME UI --- */
         #ui-container {
             position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
             z-index: 100;
             display: flex; flex-direction: column; align-items: center; gap: 15px;
             width: 90%; max-width: 500px;
-            transition: opacity 0.5s ease;
         }
 
         .glass-box {
-            background: rgba(255, 255, 255, 0.05);
+            /* Darker tint for light bg */
+            background: rgba(0, 0, 0, 0.05);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(0, 0, 0, 0.1);
             padding: 20px; border-radius: 20px;
-            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
             display: flex; gap: 10px; width: 100%;
         }
 
         input {
             flex: 1; background: transparent; border: none; outline: none;
-            color: white; font-size: 1.1rem; text-align: center;
-            border-bottom: 2px solid rgba(255,255,255,0.2);
+            color: #333; /* Dark text */
+            font-size: 1.1rem; text-align: center;
+            border-bottom: 2px solid rgba(0,0,0,0.2);
             padding-bottom: 5px; font-family: 'Poppins', sans-serif;
         }
-        input::placeholder { color: rgba(255,255,255,0.5); }
+        input::placeholder { color: rgba(0,0,0,0.4); }
         input:focus { border-bottom-color: #ff00de; }
 
         button {
             background: linear-gradient(135deg, #ff00de, #00eaff);
             border: none; padding: 12px 25px; color: white;
-            font-weight: 600; border-radius: 50px; cursor: pointer;
-            box-shadow: 0 0 15px rgba(255, 0, 222, 0.4);
+            font-weight: 700; border-radius: 50px; cursor: pointer;
+            box-shadow: 0 4px 15px rgba(255, 0, 222, 0.3);
             transition: transform 0.2s;
         }
         button:hover { transform: scale(1.05); }
 
         /* STATUS MESSAGES */
         #overlay-msg {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            text-align: center; color: white; pointer-events: none;
-            z-index: 50; display: none;
+            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
+            text-align: center; color: #333; pointer-events: none;
+            z-index: 50; 
         }
-        .big-text { font-size: 2rem; text-shadow: 0 0 20px rgba(0,255,255,0.8); margin-bottom: 10px; }
-        .sub-text { font-size: 1rem; opacity: 0.7; }
+        .big-text { font-size: 2rem; font-weight: 700; margin-bottom: 10px; color: #d600ff; }
+        .sub-text { font-size: 1.1rem; opacity: 0.8; font-weight: 600; color: #555; }
         
+        #camera-hint {
+            position: absolute; top: 10px; width: 100%; text-align: center;
+            font-size: 0.9rem; color: #ff0055; font-weight: bold;
+            z-index: 200; display: none;
+        }
+
         .input_video { display: none; }
     </style>
 </head>
 <body>
+
+    <div id="camera-hint">⚠️ Camera requires Localhost or HTTPS to work!</div>
 
     <div id="ui-container">
         <div class="glass-box" id="input-area">
             <input type="text" id="nameInput" placeholder="Enter Name (e.g. Priya)" maxlength="12">
             <button onclick="generateLink()">Create Magic</button>
         </div>
-        <div style="color: rgba(255,255,255,0.4); font-size: 0.8rem; text-align: center;" id="hint-text">
-            Enter a name above to create a unique link.
+        <div style="color: rgba(0,0,0,0.5); font-size: 0.8rem; text-align: center;">
+            Enter a name to create a shareable link.
         </div>
     </div>
 
     <div id="overlay-msg">
-        <div class="big-text" id="msg-title"></div>
-        <div class="sub-text" id="msg-sub"></div>
+        <div class="big-text" id="msg-title">Initializing...</div>
+        <div class="sub-text" id="msg-sub">👋 Please allow camera access to control the magic!</div>
     </div>
 
     <video class="input_video"></video>
@@ -92,174 +103,126 @@
     const params = new URLSearchParams(window.location.search);
     const encodedName = params.get('n');
     let targetName = "";
-    let isReceiver = false;
 
-    // --- SETUP ---
-    function initApp() {
-        if (encodedName) {
-            // RECEIVER MODE
-            try {
-                targetName = atob(encodedName);
-                isReceiver = true;
-                
-                // Hide Input UI
-                document.getElementById('ui-container').style.display = 'none';
-                
-                // Show Loading Message
-                showMsg("Igniting Particles...", "Please allow camera access for magic");
-                
-                // Start Camera
-                startCamera();
-            } catch (e) {
-                console.error("Invalid Name");
-            }
-        }
-        
-        // Always start visual engine
-        initThree();
+    if(window.location.protocol === 'file:') {
+        document.getElementById('camera-hint').style.display = 'block';
     }
 
-    // --- LINK GENERATOR ---
+    function initApp() {
+        if (encodedName) {
+            try {
+                targetName = atob(encodedName);
+                document.getElementById('ui-container').style.display = 'none'; // Hide input for receiver
+            } catch (e) { console.error("Invalid Name"); }
+        } else {
+             // If creator mode, hide the "allow camera" message initially
+             document.getElementById('overlay-msg').style.display = 'none';
+        }
+        
+        initThree();
+        // CHANGE 2: START CAMERA IMMEDIATELY FOR TESTING
+        startCamera(); 
+    }
+
     function generateLink() {
         const name = document.getElementById('nameInput').value.trim();
         if(!name) return;
-        
         const link = `${window.location.origin}${window.location.pathname}?n=${btoa(name)}`;
-        
-        navigator.clipboard.writeText(link).then(() => {
-            const btn = document.querySelector('button');
-            btn.innerText = "Copied! 🔗";
-            btn.style.background = "linear-gradient(135deg, #00ff88, #00aa66)";
-            setTimeout(() => {
-                btn.innerText = "Create Magic";
-                btn.style.background = "";
-            }, 3000);
-            alert("Link copied! Send it to " + name);
-        });
+        navigator.clipboard.writeText(link).then(() => { alert("Link copied! Send it to " + name); });
     }
 
-    function showMsg(title, sub) {
-        const el = document.getElementById('overlay-msg');
-        el.style.display = 'block';
-        document.getElementById('msg-title').innerText = title;
-        document.getElementById('msg-sub').innerText = sub;
-    }
-
-    // --- 3D ENGINE (THE PRETTY PART) ---
+    // --- 3D ENGINE ---
     let scene, camera, renderer, particles, textMesh;
     let handPos = { x: 0, y: 0, active: false };
     let clock = new THREE.Clock();
 
     function initThree() {
         scene = new THREE.Scene();
-        // Fog makes particles fade in distance
-        scene.fog = new THREE.FogExp2(0x000000, 0.002);
+        // CHANGE 3: WHITE FOG
+        scene.fog = new THREE.FogExp2(0xf8f9fa, 0.002);
 
         camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.z = 50;
 
         renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // optimize performance
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setClearColor(0xf8f9fa); // Explicit white clear color
         document.body.appendChild(renderer.domElement);
 
-        createGlowingParticles();
+        createConfettiParticles(); // Renamed function
         createFancyText();
         animate();
     }
 
-    // 1. GENERATE A GLOWING DOT TEXTURE (No images needed)
-    function getGlowTexture() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 32; canvas.height = 32;
-        const ctx = canvas.getContext('2d');
-        
-        const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-        grad.addColorStop(0, 'rgba(255,255,255,1)');
-        grad.addColorStop(0.4, 'rgba(255,255,255,0.3)');
-        grad.addColorStop(1, 'rgba(0,0,0,0)');
-        
-        ctx.fillStyle = grad;
-        ctx.fillRect(0,0,32,32);
-        
-        const tex = new THREE.CanvasTexture(canvas);
-        return tex;
-    }
-
-    // 2. PARTICLE SYSTEM
-    function createGlowingParticles() {
-        const count = 18000;
+    // CHANGE 4: NEW PARTICLE SYSTEM (CONFETTI) FOR LIGHT BG
+    function createConfettiParticles() {
+        const count = 15000;
         const geometry = new THREE.BufferGeometry();
         const positions = [];
         const colors = [];
-        const randoms = []; // To offset animation for each particle
 
+        // CHANGE 5: DARKER, VIBRANT PALETTE
         const palette = [
-            new THREE.Color('#ff00de'), // Pink
-            new THREE.Color('#00eaff'), // Cyan
-            new THREE.Color('#ffbd00'), // Gold
-            new THREE.Color('#ffffff')  // White
+            new THREE.Color('#d600ff'), // Deep Magenta
+            new THREE.Color('#0051ff'), // Deep Blue
+            new THREE.Color('#ff5e00'), // Deep Orange
+            new THREE.Color('#00bfa5')  // Teal
         ];
 
         for(let i=0; i<count; i++) {
             positions.push((Math.random()-0.5)*150, (Math.random()-0.5)*150, (Math.random()-0.5)*100);
-            
             const c = palette[Math.floor(Math.random()*palette.length)];
             colors.push(c.r, c.g, c.b);
-            
-            randoms.push(Math.random());
         }
 
         geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-        geometry.setAttribute('aRandom', new THREE.Float32BufferAttribute(randoms, 1));
 
+        // CHANGE 6: SOLID MATERIAL (No glowing additive blending)
         const material = new THREE.PointsMaterial({
-            size: 1.2,
-            map: getGlowTexture(), // The glow!
+            size: 0.8,
+            vertexColors: true,
             transparent: true,
             opacity: 0.9,
-            vertexColors: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false
+            // blending: THREE.AdditiveBlending // DISABLED for light mode
         });
 
         particles = new THREE.Points(geometry, material);
         scene.add(particles);
     }
 
-    // 3. FANCY TEXT TEXTURE
+    // CHANGE 7: DARK TEXT FOR LIGHT BG
     function createFancyText() {
         const canvas = document.createElement('canvas');
         canvas.width = 1024; canvas.height = 1024;
         const ctx = canvas.getContext('2d');
-        
-        // Helper to center text
         const centerX = 512;
         
-        // 1. HAPPY (Top)
-        ctx.font = "bold 80px 'Poppins'";
-        ctx.fillStyle = "rgba(255,255,255,0.9)";
         ctx.textAlign = "center";
-        ctx.shadowColor = "#00eaff"; ctx.shadowBlur = 20;
+
+        // 1. HAPPY
+        ctx.font = "800 80px 'Poppins'";
+        ctx.fillStyle = "#555"; // Dark Gray
         ctx.fillText("HAPPY", centerX, 300);
 
-        // 2. BIRTHDAY (Middle)
-        ctx.font = "bold 100px 'Poppins'";
-        ctx.shadowColor = "#ff00de";
+        // 2. BIRTHDAY
+        ctx.font = "800 100px 'Poppins'";
+        ctx.fillStyle = "#d600ff"; // Magenta
         ctx.fillText("BIRTHDAY", centerX, 400);
 
-        // 3. NAME (Bottom - Cursive)
+        // 3. NAME
         if(targetName) {
-            ctx.font = "160px 'Pacifico'"; // Cursive font
-            ctx.fillStyle = "#ffe600";
-            ctx.shadowColor = "#ffbd00"; ctx.shadowBlur = 30;
+            ctx.font = "160px 'Pacifico'";
+            ctx.fillStyle = "#ff5e00"; // Orange
+            ctx.shadowColor = "rgba(0,0,0,0.2)"; ctx.shadowBlur = 20;
             ctx.fillText(targetName, centerX, 600);
         }
 
         const tex = new THREE.CanvasTexture(canvas);
+        // CHANGE 8: NO ADDITIVE BLENDING ON TEXT
         const mat = new THREE.MeshBasicMaterial({ 
-            map: tex, transparent: true, blending: THREE.AdditiveBlending, side: THREE.DoubleSide
+            map: tex, transparent: true, side: THREE.DoubleSide
         });
         
         textMesh = new THREE.Mesh(new THREE.PlaneGeometry(70, 70), mat);
@@ -267,20 +230,16 @@
         scene.add(textMesh);
     }
 
-    // --- ANIMATION LOOP ---
     function animate() {
         requestAnimationFrame(animate);
-        
         if(!particles) return;
 
         const time = clock.getElapsedTime();
         const positions = particles.geometry.attributes.position.array;
-        const count = 18000;
+        const count = 15000;
 
-        // Smoothly move text
         if(textMesh) {
             textMesh.position.y = Math.sin(time * 0.5) * 2;
-            textMesh.rotation.y = Math.sin(time * 0.3) * 0.05;
         }
 
         for(let i=0; i<count; i++) {
@@ -289,38 +248,25 @@
             let py = positions[iy];
             let pz = positions[iz];
 
-            // Default: Gentle Floating (Galaxy effect)
-            // We use Noise-like math to make it look organic
-            const driftX = Math.sin(time * 0.5 + py * 0.05) * 0.1;
-            const driftY = Math.cos(time * 0.3 + px * 0.05) * 0.1;
-
-            if (handPos.active && isReceiver) {
-                // ATTRACTION MODE (When hand is shown)
+            // CHANGE 9: GESTURE ALWAYS ACTIVE (Removed "&& isReceiver")
+            if (handPos.active) {
+                // ATTRACTION MODE
                 const dx = handPos.x - px;
                 const dy = handPos.y - py;
-                const dz = 10 - pz; // Pull towards camera slightly
+                const dz = 10 - pz;
                 
-                // physics easing
-                positions[ix] += dx * 0.08; 
-                positions[iy] += dy * 0.08;
-                positions[iz] += dz * 0.08;
-
-                // Add some randomness so it's a swarm, not a solid block
-                positions[ix] += (Math.random()-0.5)*2; 
-                positions[iy] += (Math.random()-0.5)*2; 
-                positions[iz] += (Math.random()-0.5)*2; 
+                positions[ix] += dx * 0.08 + (Math.random()-0.5)*1.5; 
+                positions[iy] += dy * 0.08 + (Math.random()-0.5)*1.5;
+                positions[iz] += dz * 0.08 + (Math.random()-0.5)*1.5; 
 
             } else {
-                // IDLE MODE (Orbiting)
-                // Rotate entire system slowly? No, lets move individual particles
-                positions[ix] += driftX;
-                positions[iy] += driftY;
+                // IDLE MODE
+                positions[ix] += Math.sin(time * 0.5 + py * 0.05) * 0.1;
+                positions[iy] += Math.cos(time * 0.3 + px * 0.05) * 0.1;
                 
-                // Return to original-ish area if they went too far
-                if(px > 100) positions[ix] -= 0.5;
-                if(px < -100) positions[ix] += 0.5;
-                if(py > 80) positions[iy] -= 0.5;
-                if(py < -80) positions[iy] += 0.5;
+                // Keep them contained
+                if(px > 100 || px < -100) positions[ix] *= 0.9;
+                if(py > 80 || py < -80) positions[iy] *= 0.9;
             }
         }
         
@@ -328,22 +274,17 @@
         renderer.render(scene, camera);
     }
 
-    // --- HAND TRACKING ---
     function startCamera() {
         const video = document.getElementsByClassName('input_video')[0];
         const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-        
         hands.setOptions({ maxNumHands: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
         
         hands.onResults((results) => {
-            // Remove loading text once hand is found or loop starts
+            // Hide loading message when hand detection is running
             document.getElementById('overlay-msg').style.display = 'none';
 
             if (results.multiHandLandmarks.length > 0) {
-                const lm = results.multiHandLandmarks[0][8]; // Index finger tip
-                
-                // Convert 0-1 coords to 3D space coords (roughly)
-                // Flip X because webcam is mirrored
+                const lm = results.multiHandLandmarks[0][8];
                 handPos.x = (0.5 - lm.x) * 100;
                 handPos.y = (0.5 - lm.y) * 80;
                 handPos.active = true;
@@ -357,7 +298,8 @@
             width: 640, height: 480
         });
         cam.start().catch(e => {
-            showMsg("Camera Blocked", "Please enable camera access and reload.");
+            console.error(e);
+            alert("Camera failed to start. Ensure you are using a server (localhost or HTTPS).");
         });
     }
 
@@ -367,7 +309,6 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // Start
     initApp();
 
 </script>

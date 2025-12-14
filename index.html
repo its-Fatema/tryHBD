@@ -3,91 +3,69 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Magical Birthday Wish</title>
+    <title>Birthday Sparkler</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Segoe UI', sans-serif; }
         canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1; }
         
-        /* UI OVERLAYS */
-        #ui-layer {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 10; pointer-events: none;
-            display: flex; justify-content: center; align-items: center;
+        /* CONTROLS (Only visible to Creator) */
+        #creator-controls {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            z-index: 10; width: 90%; max-width: 600px;
+            background: rgba(20, 20, 30, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 20px; border-radius: 20px;
+            display: flex; gap: 10px; align-items: center;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.1);
+            transition: opacity 0.5s;
         }
-
-        /* CARD CREATOR BOX */
-        #creator-box, #expired-msg {
-            background: rgba(20, 20, 30, 0.9);
-            border: 1px solid #333;
-            box-shadow: 0 0 20px cyan;
-            padding: 40px;
-            border-radius: 15px;
-            text-align: center;
-            color: white;
-            pointer-events: auto;
-            max-width: 400px;
-            display: none; /* Hidden by default */
-        }
-
-        h1 { margin-top: 0; color: cyan; text-transform: uppercase; letter-spacing: 2px; }
-        p { color: #ccc; }
 
         input {
-            width: 80%; padding: 10px; margin: 15px 0;
-            background: #111; border: 1px solid #555; color: white;
-            border-radius: 5px; text-align: center; font-size: 1.2rem;
+            flex: 1; padding: 12px;
+            background: rgba(0,0,0,0.5); border: 1px solid #555; color: white;
+            border-radius: 10px; text-align: center; font-size: 1rem;
         }
         input:focus { outline: none; border-color: cyan; }
 
         button {
             background: linear-gradient(45deg, #ff0055, #ff00ff);
-            border: none; padding: 12px 30px; color: white;
+            border: none; padding: 12px 25px; color: white;
             font-size: 1rem; border-radius: 25px; cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            font-weight: bold;
+            font-weight: bold; white-space: nowrap;
         }
         button:hover { transform: scale(1.05); box-shadow: 0 0 15px #ff00ff; }
 
-        .link-display {
-            margin-top: 15px; word-break: break-all;
-            font-size: 0.9rem; color: #00ffaa;
-            background: #000; padding: 10px; border-radius: 5px;
-            display: none; user-select: text;
+        /* MESSAGES */
+        #status-msg {
+            position: absolute; top: 20%; left: 50%; transform: translate(-50%, -50%);
+            color: cyan; font-size: 1.2rem; text-shadow: 0 0 10px cyan;
+            z-index: 10; pointer-events: none; text-align: center;
+            display: none;
+            width: 80%;
+        }
+        
+        #hand-instruction {
+            position: absolute; bottom: 10%; left: 50%; transform: translateX(-50%);
+            color: rgba(255,255,255,0.7); font-size: 0.9rem;
+            z-index: 5; pointer-events: none; display: none;
+            animation: pulse 2s infinite;
         }
 
-        /* LOADING SPINNER */
-        #loading {
-            position: absolute; top: 50%; left: 50%; 
-            transform: translate(-50%, -50%); 
-            color: white; font-family: sans-serif; pointer-events: none;
-            text-shadow: 0 0 10px cyan;
-            display: none; z-index: 5;
-        }
+        @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
 
         .input_video { display: none; }
     </style>
 </head>
 <body>
 
-    <div id="ui-layer">
-        <div id="creator-box">
-            <h1>Create A Wish</h1>
-            <p>Enter the birthday person's name below.</p>
-            <input type="text" id="nameInput" placeholder="Name (e.g. Sarah)" maxlength="15">
-            <br>
-            <button onclick="generateLink()">Generate Magic Link</button>
-            <div id="resultLink" class="link-display"></div>
-            <p style="font-size: 0.8rem; margin-top:10px; opacity: 0.7;">Link expires in 5 minutes after creation.</p>
-        </div>
-
-        <div id="expired-msg">
-            <h1 style="color: #555;">Wish Faded</h1>
-            <p>This magical moment has expired in the winds of time.</p>
-            <button onclick="window.location.href = window.location.pathname">Create New Wish</button>
-        </div>
+    <div id="creator-controls">
+        <input type="text" id="nameInput" placeholder="Enter Name (e.g. Sarah)" maxlength="12">
+        <button onclick="generateLink()">Copy Link</button>
     </div>
 
-    <div id="loading">Igniting Fireworks Engine...<br>Please Allow Camera Access</div>
+    <div id="status-msg"></div>
+    <div id="hand-instruction">👋 Show your hand to control the magic!</div>
     <video class="input_video"></video>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -100,13 +78,23 @@
     const urlParams = new URLSearchParams(window.location.search);
     const wishName = urlParams.get('n'); 
     const wishTime = urlParams.get('t');
-    const EXPIRATION_MINUTES = 10; 
+    const EXPIRATION_MINUTES = 20; // Increased to 20 mins for safety
 
     let finalName = ""; 
     let isReceiverMode = false;
 
     // --- INITIALIZATION ---
     function init() {
+        const creatorControls = document.getElementById('creator-controls');
+        const statusMsg = document.getElementById('status-msg');
+        const handInstr = document.getElementById('hand-instruction');
+
+        // SAFETY CHECK: Ensure elements exist
+        if (!creatorControls || !statusMsg) {
+            console.error("HTML Elements missing! Check your ID names.");
+            return;
+        }
+
         if (wishName && wishTime) {
             // --- RECEIVER VIEW ---
             const now = Date.now();
@@ -114,27 +102,29 @@
             const diffMinutes = (now - createdTime) / 1000 / 60;
 
             if (diffMinutes > EXPIRATION_MINUTES) {
-                document.getElementById('status-msg').style.display = 'block';
-                document.getElementById('status-msg').innerText = "✨ The magic has faded... (Link Expired)";
-                document.getElementById('creator-controls').style.display = 'flex'; 
+                statusMsg.style.display = 'block';
+                statusMsg.innerText = "✨ The magic has faded... (Link Expired)";
+                creatorControls.style.display = 'flex'; 
             } else {
                 // VALID LINK
-                finalName = atob(wishName); 
+                try {
+                    finalName = atob(wishName); 
+                } catch(e) {
+                    finalName = "Friend";
+                }
+                
                 isReceiverMode = true;
                 
-                document.getElementById('creator-controls').style.display = 'none';
-                
-                const status = document.getElementById('status-msg');
-                status.style.display = 'block';
-                status.innerText = "Igniting Magic Engine...";
-                
-                document.getElementById('hand-instruction').style.display = 'block';
+                creatorControls.style.display = 'none';
+                statusMsg.style.display = 'block';
+                statusMsg.innerText = "Igniting Magic Engine...";
+                handInstr.style.display = 'block';
 
-                // CHECK FOR CAMERA SUPPORT BEFORE STARTING
+                // CHECK FOR CAMERA SUPPORT
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    alert("⚠️ CAMERA BLOCKED: Browsers do not allow camera access on 'file://' URLs. Please use 'Live Server' in VS Code or host this on Netlify/GitHub Pages.");
-                    status.innerText = "Error: Camera requires HTTPS or Localhost.";
-                    status.style.color = "red";
+                    alert("⚠️ CAMERA BLOCKED: Ensure you are using HTTPS (GitHub Pages) or Localhost.");
+                    statusMsg.innerText = "Error: Camera requires HTTPS.";
+                    statusMsg.style.color = "red";
                 } else {
                     startCamera();
                 }
@@ -153,7 +143,7 @@
         const link = `${window.location.origin}${window.location.pathname}?n=${encodedName}&t=${now}`;
         
         navigator.clipboard.writeText(link).then(() => {
-            alert("Link copied! \n\nIMPORTANT: If you send this link to yourself to test, make sure you are not opening it as a file://. Use a local server.");
+            alert("Link copied! Send it to " + input);
         });
     }
 
@@ -220,7 +210,7 @@
         const count = 12000;
         const geometry = new THREE.BufferGeometry();
         const positions = [];
-        const velocities = []; // Custom velocity storage
+        const velocities = []; 
         const colors = [];
         const palette = [0xFF0055, 0xFFD700, 0x00FFFF, 0xFFFFFF]; 
 
@@ -233,8 +223,6 @@
 
         geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-        
-        // Custom attribute for velocity to persist it
         geometry.setAttribute('velocity', new THREE.Float32BufferAttribute(velocities, 3));
 
         particles = new THREE.Points(geometry, new THREE.PointsMaterial({
@@ -247,11 +235,14 @@
     function animate() {
         requestAnimationFrame(animate);
         
+        // Safety check to prevent crashing if initialized improperly
+        if (!particles) return;
+
         const posAttr = particles.geometry.attributes.position;
         const velAttr = particles.geometry.attributes.velocity;
         
         const pos = posAttr.array;
-        const vel = velAttr.array; // Use the attribute array for storage
+        const vel = velAttr.array; 
         
         const speed = isReceiverMode ? 0.1 : 0.05; 
         const returnStrength = 0.008;
@@ -265,7 +256,7 @@
             let py = pos[iy];
             let pz = pos[iz];
 
-            let vx = vel[ix]; // Retrieve previous velocity
+            let vx = vel[ix]; 
             let vy = vel[iy];
             let vz = vel[iz];
 
@@ -276,7 +267,7 @@
                 const distSq = dx*dx + dy*dy + dz*dz;
                 const force = Math.min(200/(distSq+1), 2) * speed;
                 
-                vx += dx * force * 0.1; // Accumulate force
+                vx += dx * force * 0.1; 
                 vy += dy * force * 0.1;
                 vz += dz * force * 0.1;
             } else {
@@ -291,7 +282,6 @@
                 vz += (-10 - pz) * returnStrength;
             }
 
-            // Friction
             vx *= 0.9; 
             vy *= 0.9;
             vz *= 0.9;
@@ -300,14 +290,13 @@
             pos[iy] += vy;
             pos[iz] += vz;
             
-            // Store velocity back
             vel[ix] = vx;
             vel[iy] = vy;
             vel[iz] = vz;
         }
         
         posAttr.needsUpdate = true;
-        velAttr.needsUpdate = true; // Important to save velocity
+        velAttr.needsUpdate = true; 
         
         if(textMesh) {
             textMesh.position.y = Math.sin(Date.now()*0.001)*2;
@@ -317,7 +306,7 @@
         renderer.render(scene, camera);
     }
 
-    // --- HAND TRACKING (Only runs for Receiver) ---
+    // --- HAND TRACKING ---
     function startCamera() {
         const videoElement = document.getElementsByClassName('input_video')[0];
         const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
@@ -325,7 +314,9 @@
         hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
         
         hands.onResults((results) => {
-            document.getElementById('status-msg').style.display = 'none'; 
+            const statusMsg = document.getElementById('status-msg');
+            if (statusMsg) statusMsg.style.display = 'none'; 
+            
             if (results.multiHandLandmarks.length > 0) {
                 isHandDetected = true;
                 const index = results.multiHandLandmarks[0][8];
@@ -344,19 +335,22 @@
         cameraUtils.start()
             .then(() => { console.log("Camera started"); })
             .catch(e => {
-                alert("Camera failed to start. Ensure you are on HTTPS or Localhost.");
+                console.log(e);
             });
     }
 
     window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
+        // SAFETY CHECK: Prevent crash if camera not ready
+        if (camera && renderer) {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
     });
 
-    init(); 
+    // Run when DOM is fully loaded
+    window.addEventListener('DOMContentLoaded', init);
 
 </script>
-
 </body>
 </html>
